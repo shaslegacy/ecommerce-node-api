@@ -11,7 +11,7 @@ const validateMongoDbId = require("../utils/validateMongodbId");
 const { generateRefreshToken } = require("../config/refreshtoken");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-// const sendEmail = require("./emailCtrl");
+const sendEmail = require("./emailCtrl");
 
 // Create a User ----------------------------------------------
 
@@ -84,6 +84,7 @@ const loginAdmin = asyncHandler(async (req, res) => {
       lastname: findAdmin?.lastname,
       email: findAdmin?.email,
       mobile: findAdmin?.mobile,
+      role: findAdmin?.role,
       token: generateToken(findAdmin?._id),
     });
   } else {
@@ -285,14 +286,14 @@ const forgotPasswordToken = asyncHandler(async (req, res) => {
   try {
     const token = await user.createPasswordResetToken();
     await user.save();
-    const resetURL = `Hi, Please follow this link to reset Your Password. This link is valid till 10 minutes from now. <a href='http://localhost:5000/api/user/reset-password/${token}'>Click Here</>`;
+    const resetURL = `Hi, Please follow this link to reset Your Password. This link is valid till 10 minutes from now. <a href='http://localhost:6001/api/user/reset-password/${token}'>Click Here</>`;
     const data = {
       to: email,
       text: "Hey User",
       subject: "Forgot Password Link",
       htm: resetURL,
     };
-    // sendEmail(data);
+    sendEmail(data);
     res.json(token);
   } catch (error) {
     throw new Error(error);
@@ -332,11 +333,10 @@ const userCart = asyncHandler(async (req, res) => {
   try {
     let products = [];
     const user = await User.findById(_id);
-    // check if user already have product in cart
-    const alreadyExistCart = await Cart.findOne({ orderby: user._id });
-    if (alreadyExistCart) {
-      alreadyExistCart.remove();
-    }
+    
+    // check if user already has a cart
+    const alreadyExistCart = await Cart.findOneAndDelete({ orderby: user._id });
+    
     for (let i = 0; i < cart.length; i++) {
       let object = {};
       object.product = cart[i]._id;
@@ -424,11 +424,18 @@ const createOrder = asyncHandler(async (req, res) => {
     } else {
       finalAmout = userCart.cartTotal;
     }
+    // Get the last order to determine the next unique numeric ID
+    const lastOrder = await Order.findOne().sort({ orderId: -1 });
+    let orderIdNumber = 1;
+    if (lastOrder && lastOrder.orderId) {
+      orderIdNumber = parseInt(lastOrder.orderId.replace("#MB", "")) + 1;
+    }
+    const orderId = "#MB" + orderIdNumber;
 
     let newOrder = await new Order({
       products: userCart.products,
       paymentIntent: {
-        id: uniqid(),
+        id: orderId,
         method: "COD",
         amount: finalAmout,
         status: "Cash on Delivery",
@@ -453,64 +460,6 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 });
 
-const getOrders = asyncHandler(async (req, res) => {
-  const { _id } = req.user;
-  validateMongoDbId(_id);
-  try {
-    const userorders = await Order.findOne({ orderby: _id })
-      .populate("products.product")
-      .populate("orderby")
-      .exec();
-    res.json(userorders);
-  } catch (error) {
-    throw new Error(error);
-  }
-});
-
-const getAllOrders = asyncHandler(async (req, res) => {
-  try {
-    const alluserorders = await Order.find()
-      .populate("products.product")
-      .populate("orderby")
-      .exec();
-    res.json(alluserorders);
-  } catch (error) {
-    throw new Error(error);
-  }
-});
-const getOrderByUserId = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  validateMongoDbId(id);
-  try {
-    const userorders = await Order.findOne({ orderby: id })
-      .populate("products.product")
-      .populate("orderby")
-      .exec();
-    res.json(userorders);
-  } catch (error) {
-    throw new Error(error);
-  }
-});
-const updateOrderStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
-  const { id } = req.params;
-  validateMongoDbId(id);
-  try {
-    const updateOrderStatus = await Order.findByIdAndUpdate(
-      id,
-      {
-        orderStatus: status,
-        paymentIntent: {
-          status: status,
-        },
-      },
-      { new: true }
-    );
-    res.json(updateOrderStatus);
-  } catch (error) {
-    throw new Error(error);
-  }
-});
 
 module.exports = {
   createUser,
@@ -534,8 +483,4 @@ module.exports = {
   emptyCart,
   applyCoupon,
   createOrder,
-  getOrders,
-  updateOrderStatus,
-  getAllOrders,
-  getOrderByUserId,
 };

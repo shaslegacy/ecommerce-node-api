@@ -16,8 +16,9 @@ var orderSchema = new mongoose.Schema(
     paymentIntent: {},
     orderStatus: {
       type: String,
-      default: "Not Processed",
+      default: "Ordered",
       enum: [
+        "Ordered",
         "Not Processed",
         "Cash on Delivery",
         "Processing",
@@ -29,6 +30,22 @@ var orderSchema = new mongoose.Schema(
     orderby: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+    paidAt: {
+      type: Date,
+      default: Date.now(),
+    },
+    month: {
+      type: String,
+      default: new Date().getMonth(),
+    },
+    totalPrice: {
+      type: Number,
+      required: true,
+    },
+    totalPriceAfterDiscount: {
+      type: Number,
+      required: true,
     },
   },
   {
