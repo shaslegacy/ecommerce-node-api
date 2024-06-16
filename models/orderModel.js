@@ -41,11 +41,11 @@ var orderSchema = new mongoose.Schema(
     },
     totalPrice: {
       type: Number,
-      required: true,
+      // required: true,
     },
     totalPriceAfterDiscount: {
       type: Number,
-      required: true,
+      // required: true,
     },
   },
   {

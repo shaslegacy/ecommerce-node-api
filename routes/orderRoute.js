@@ -1,18 +1,19 @@
 const express = require("express");
 const {
-  getOrders,
+  getSingleOrder,
   updateOrderStatus,
   getAllOrders,
   getYearlyOrders,
   getMonthlyOrders,
+  getOrderByUserId,
 } = require("../controller/orderCtrl");
 
 const { authMiddleware, isAdmin } = require("../middlewares/authMiddleware");
 const router = express.Router();
 
 router.get("/get-all-orders", authMiddleware, isAdmin, getAllOrders);
-router.post("/get-order-by-user/:id", authMiddleware, isAdmin, getAllOrders);
-router.get("/get-orders", authMiddleware, getOrders);
+router.get("/get-order-by-user", authMiddleware, getOrderByUserId);
+router.get("/get-order-by-id/:id", authMiddleware, isAdmin, getSingleOrder);
 router.get("/get-monthly-orders", authMiddleware, getMonthlyOrders);
 router.get("/get-yearly-orders", authMiddleware, getYearlyOrders);
 router.put(

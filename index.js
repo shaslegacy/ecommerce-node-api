@@ -1,45 +1,46 @@
-const bodyParser = require("body-parser");
-const express = require("express");
+
+
+const app = require("./app");
 const dbConnect = require("./config/dbConnect");
-const { notFound, errorHandler } = require("./middlewares/errorHandler");
-const app = express();
-const dotenv = require("dotenv").config();
-const PORT = 6001;
-const authRouter = require("./routes/authRoute");
-const productRouter = require("./routes/productRoute");
-const blogRouter = require("./routes/blogRoute");
-const categoryRouter = require("./routes/prodcategoryRoute");
-const blogcategoryRouter = require("./routes/blogCatRoute");
-const brandRouter = require("./routes/brandRoute");
-const colorRouter = require("./routes/colorRoute");
-const enqRouter = require("./routes/enqRoute");
-const couponRouter = require("./routes/couponRoute");
-const uploadRouter = require("./routes/uploadRoute");
-const orderRouter = require("./routes/orderRoute");
-const cookieParser = require("cookie-parser");
-const morgan = require("morgan");
-const cors = require("cors");
+require('dotenv').config();
+const cloudinary = require("cloudinary");
 
+// Handling uncaught Exception
+process.on("uncaughtException", (err) => {
+  console.log(`Error: ${err.message}`);
+  console.log(`shutting down the server for handling uncaught exception`);
+});
+
+// config
+if (process.env.NODE_ENV !== "PRODUCTION") {
+  require("dotenv").config({
+    path: ".env",
+  });
+}
+
+// connect db
 dbConnect();
-app.use(morgan("dev"));
-app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use("/api/user", authRouter);
-app.use("/api/product", productRouter);
-app.use("/api/blog", blogRouter);
-app.use("/api/product-category", categoryRouter);
-app.use("/api/blogcategory", blogcategoryRouter);
-app.use("/api/brand", brandRouter);
-app.use("/api/coupon", couponRouter);
-app.use("/api/color", colorRouter);
-app.use("/api/enquiry", enqRouter);
-app.use("/api/upload", uploadRouter);
-app.use("/api/order", orderRouter);
 
-app.use(notFound);
-app.use(errorHandler);
-app.listen(PORT, () => {
-  console.log(`Server is running  at PORT ${PORT}`);
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.API_KEY,
+  api_secret: process.env.SECRET_KEY
+})
+
+
+// create server
+const server = app.listen(process.env.PORT, () => {
+  console.log(
+    `Server is running on http://localhost:${process.env.PORT}`
+  );
+});
+
+// unhandled promise rejection
+process.on("unhandledRejection", (err) => {
+  console.log(`Shutting down the server for ${err.message}`);
+  console.log(`shutting down the server for unhandle promise rejection`);
+
+  server.close(() => {
+    process.exit(1);
+  });
 });

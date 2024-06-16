@@ -5,7 +5,7 @@ var productSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: true,
+      required: [true, "Please enter your product name!"],
       trim: true,
     },
     slug: {
@@ -18,21 +18,24 @@ var productSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    price: {
+    originalPrice: {
       type: Number,
-      required: true,
+    },
+    discountPrice: {
+      type: Number,
+      required: [true, "Please enter your product price!"],
     },
     category: {
       type: String,
-      required: true,
+      required: [true, "Please enter your product category!"],
     },
     brand: {
       type: String,
       required: true,
     },
-    quantity: {
+    stock: {
       type: Number,
-      required: true,
+      required: [true, "Please enter your product stock!"],
     },
     sold: {
       type: Number,
@@ -46,17 +49,42 @@ var productSchema = new mongoose.Schema(
     ],
     color: [],
     tags: String,
-    ratings: [
+    reviews: [
       {
-        star: Number,
-        comment: String,
-        postedby: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        user: {
+          type: Object,
+        },
+        rating: {
+          type: Number,
+        },
+        comment: {
+          type: String,
+        },
+        productId: {
+          type: String,
+        },
+        createdAt:{
+          type: Date,
+          default: Date.now(),
+        }
       },
     ],
     totalrating: {
-      type: String,
+      type: Number,
       default: 0,
     },
+    shopId: {
+      type: String,
+      required: true,
+    },
+    shop: {
+      type: Object,
+      required: true,
+    },
+    sold_out: {
+      type: Number,
+      default: 0,
+    }
   },
   { timestamps: true }
 );

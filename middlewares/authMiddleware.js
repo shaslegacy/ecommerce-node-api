@@ -1,4 +1,5 @@
 const User = require("../models/userModel");
+const Shop = require("../models/shopModel");
 const jwt = require("jsonwebtoken");
 const asyncHandler = require("express-async-handler");
 
@@ -23,6 +24,19 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
     }
 });
 
+const isSeller = asyncHandler(async(req,res,next) => {
+    const {seller_token} = req.cookies;
+    if(!seller_token){
+        return next(new Error("Please login to continue", 401));
+    }
+
+    const decoded = jwt.verify(seller_token, process.env.JWT_SECRET);
+
+    req.seller = await Shop.findById(decoded.id);
+
+    next();
+});
+
 const isAdmin = asyncHandler(async (req, res, next) => {
     const { email } = req.user;
     const adminUser = await User.findOne({ email });
@@ -33,4 +47,4 @@ const isAdmin = asyncHandler(async (req, res, next) => {
     }
 })
 
-module.exports = {authMiddleware, isAdmin};
+module.exports = {authMiddleware, isAdmin, isSeller};

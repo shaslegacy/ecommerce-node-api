@@ -3,7 +3,6 @@ const Product = require("../models/productModel");
 const Cart = require("../models/cartModel");
 const Coupon = require("../models/couponModel");
 const Order = require("../models/orderModel");
-const uniqid = require("uniqid");
 
 const asyncHandler = require("express-async-handler");
 const { generateToken } = require("../config/jwtToken");
@@ -11,19 +10,96 @@ const validateMongoDbId = require("../utils/validateMongodbId");
 const { generateRefreshToken } = require("../config/refreshtoken");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const sendEmail = require("./emailCtrl");
+const sendMail = require("../utils/sendMail");
+const cloudinary = require("cloudinary");
 
-// Create a User ----------------------------------------------
 
-const createUser = asyncHandler(async (req, res) => {
-  const email = req.body.email;
-  const findUser = await User.findOne({ email: email });
+const createUser = asyncHandler(async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const userEmail = await User.findOne({ email });
 
-  if (!findUser) {
-    const newUser = await User.create(req.body);
-    res.json(newUser);
-  } else {
-    throw new Error("User Already Exists");
+    if (userEmail) {
+      return next(new Error("User already exists"));
+    }
+
+    const myCloud = await cloudinary.uploader.upload(req.body.avatar, {
+      folder: "public/images/avatars",
+    });
+
+    const user = {
+      firstname: req.body.firstname,
+      lastname: req.body.lastname,
+      email: email,
+      password: req.body.password,
+      avatar: {
+        public_id: myCloud.public_id,
+        url: myCloud.secure_url,
+      },
+      mobile: req.body.mobile,
+    };
+
+    const activationToken = createActivationToken(user);
+
+    const activationUrl = `http://localhost:6001/activation/${activationToken}`;
+
+    try {
+      await sendMail({
+        email: user.email,
+        subject: "Activate your account",
+        message: `Hello ${user.firstname}, please click on the link to activate your account: ${activationUrl}`,
+      });
+      res.status(201).json({
+        success: true,
+        message: `please check your email:- ${user.email} to activate your account!`,
+      });
+    } catch (error) {
+      return next(new Error(error.message, 500));
+    }
+  } catch (error) {
+    return next(new Error(error.message, 400));
+  }
+});
+
+// create activation token
+const createActivationToken = (user) => {
+  return jwt.sign(user, process.env.ACTIVATION_SECRET, {
+    expiresIn: "5m",
+  });
+};
+
+const userActivation = asyncHandler(async (req, res, next) => {
+  try {
+    const { activation_token } = req.body;
+
+    const newUser = jwt.verify(
+      activation_token,
+      process.env.ACTIVATION_SECRET
+    );
+
+    if (!newUser) {
+      return next(new Error("Invalid token", 400));
+    }
+    const { firstname, lastname, email, mobile, password, avatar } = newUser;
+
+    let user = await User.findOne({ email });
+
+    if (user) {
+      return next(new Error("User already exists", 400));
+    }
+    user = await User.create({
+      firstname, 
+      lastname,
+      email,
+      mobile,
+      avatar,
+      password,
+    });
+
+    // sendToken(user, 201, res);
+    res.json(user);
+  } catch (error) {
+    return next(new Error(error, 500));
   }
 });
 
@@ -119,6 +195,7 @@ const logout = asyncHandler(async (req, res) => {
   if (!user) {
     res.clearCookie("refreshToken", {
       httpOnly: true,
+      sameSite: "none",
       secure: true,
     });
     return res.sendStatus(204); // forbidden
@@ -158,27 +235,108 @@ const updatedUser = asyncHandler(async (req, res) => {
   }
 });
 
+// Update user avatar
+const updateUserAvatar = asyncHandler(async (req, res, next) => {
+  try {
+    let existsUser = await User.findById(req.user.id);
+
+    if (!existsUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (req.body.avatar !== "") {
+      if (existsUser.avatar && existsUser.avatar.public_id) {
+        const imageId = existsUser.avatar.public_id;
+
+        await cloudinary.uploader.destroy(imageId);
+      }
+
+      const myCloud = await cloudinary.uploader.upload(req.body.avatar, {
+        folder: "public/images/avatars",
+        width: 150,
+      });
+
+      existsUser.avatar = {
+        public_id: myCloud.public_id,
+        url: myCloud.secure_url,
+      };
+    } else {
+      existsUser.avatar = null; 
+    }
+
+    await existsUser.save();
+
+    res.status(200).json({
+      success: true,
+      user: existsUser,
+    });
+  } catch (error) {
+    return next(new Error(error.message));
+  }
+});
+
 // save user Address
 
 const saveAddress = asyncHandler(async (req, res, next) => {
-  const { _id } = req.user;
-  validateMongoDbId(_id);
+  validateMongoDbId(req.user.id);
 
   try {
-    const updatedUser = await User.findByIdAndUpdate(
-      _id,
-      {
-        address: req?.body?.address,
-      },
-      {
-        new: true,
-      }
+    const user = await User.findById(req.user.id);
+
+    const sameTypeAddress = user.addresses.find(
+      (address) => address.addressType === req.body.addressType
     );
-    res.json(updatedUser);
+    if (sameTypeAddress) {
+      return next(
+        new Error(`${req.body.addressType} address already exists`)
+      );
+    }
+
+    const existsAddress = user.addresses.find(
+      (address) => address._id === req.body._id
+    );
+
+    if (existsAddress) {
+      Object.assign(existsAddress, req.body);
+    } else {
+      // add the new address to the array
+      user.addresses.push(req.body);
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      user,
+    });
   } catch (error) {
-    throw new Error(error);
+    return next(new ErrorHandler(error.message, 500));
   }
 });
+
+// delete user address
+
+const deleteAddress = asyncHandler(async (req, res, next) => {
+  validateMongoDbId(req.user._id);
+
+    try {
+      const userId = req.user._id;
+      const addressId = req.params.id;
+
+      await User.updateOne(
+        {
+          _id: userId,
+        },
+        { $pull: { addresses: { _id: addressId } } }
+      );
+
+      const user = await User.findById(userId);
+
+      res.status(200).json({ success: true, user });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  });
 
 // Get all users
 
@@ -209,17 +367,33 @@ const getaUser = asyncHandler(async (req, res) => {
 
 // Get a single user
 
-const deleteaUser = asyncHandler(async (req, res) => {
+const deleteaUser = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   validateMongoDbId(id);
 
   try {
-    const deleteaUser = await User.findByIdAndDelete(id);
-    res.json({
-      deleteaUser,
+    const user = await User.findById(id);
+
+    if (!user) {
+      return next(
+        new Error("User is not available with this id", 400)
+      );
+    }
+
+    if (user.avatar && user.avatar.public_id) {
+      const imageId = user.avatar.public_id;
+
+      await cloudinary.uploader.destroy(imageId);
+    }
+
+    await User.findByIdAndDelete(id);
+
+    res.status(201).json({
+      success: true,
+      message: "User deleted successfully!",
     });
   } catch (error) {
-    throw new Error(error);
+    return next(new Error(error.message, 500));
   }
 });
 
@@ -293,7 +467,7 @@ const forgotPasswordToken = asyncHandler(async (req, res) => {
       subject: "Forgot Password Link",
       htm: resetURL,
     };
-    sendEmail(data);
+    sendMail(data);
     res.json(token);
   } catch (error) {
     throw new Error(error);
@@ -379,7 +553,7 @@ const emptyCart = asyncHandler(async (req, res) => {
   validateMongoDbId(_id);
   try {
     const user = await User.findOne({ _id });
-    const cart = await Cart.findOneAndRemove({ orderby: user._id });
+    const cart = await Cart.findOneAndDelete({ orderby: user._id });
     res.json(cart);
   } catch (error) {
     throw new Error(error);
@@ -483,4 +657,7 @@ module.exports = {
   emptyCart,
   applyCoupon,
   createOrder,
+  userActivation,
+  updateUserAvatar,
+  deleteAddress
 };

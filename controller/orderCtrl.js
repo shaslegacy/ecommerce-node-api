@@ -21,25 +21,25 @@ const sendEmail = require("./emailCtrl");
   });
 
 
- const getOrders = asyncHandler(async (req, res) => {
-    const { _id } = req.user;
-    validateMongoDbId(_id);
+ const getSingleOrder = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    validateMongoDbId(id);
     try {
-      const userorders = await Order.findOne({ orderby: _id })
+      const singleOrder = await Order.findOne({ _id: id })
         .populate("products.product")
         .populate("orderby")
         .exec();
-      res.json(userorders);
+      res.json(singleOrder);
     } catch (error) {
       throw new Error(error);
     }
   });
   
   const getOrderByUserId = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    validateMongoDbId(id);
+    const { _id } = req.user;
+    validateMongoDbId(_id);
     try {
-      const userorders = await Order.findOne({ orderby: id })
+      const userorders = await Order.findOne({ orderby: _id })
         .populate("products.product")
         .populate("orderby")
         .exec();
@@ -147,7 +147,7 @@ const sendEmail = require("./emailCtrl");
   });
 
   module.exports = {
-    getOrders,
+    getSingleOrder,
     updateOrderStatus,
     getAllOrders,
     getOrderByUserId,
